@@ -277,11 +277,26 @@ public class ForkJoinSumCalculator extends RecursiveTask<Long> {
 다음 코드처럼 ForkJoinSumcalculator의 생성자로 원하는 수의 배열을 넘겨줄 수 있습니다.  
 ```java
 public static long forkJoinSum(long n) {
-    long[] numbers = LongStream.rangeClosed(1, n).toArray();
-    ForkJoinTask<Long> task = new ForkJoinSumCalculator(numbers);
-    return FORK_JOIN_POOL.invoke(task);
-  }
+		// n까지의 자연수 덧셈 작업을 병렬로 수행하는 방법
+		long[] numbers = LongStream.rangeClosed(1, n).toArray();
+		ForkJoinTask<Long> task = new ForkJoinSumCalculator(numbers);
+		return new ForkJoinPool().invoke(task);
+	}
 ```
+LongStream으로 n까지의 자연수를 포함하는 배열을 생성했습니다.  
+그리고 생성된 배열을 ForkJoinSumCalculator의 생성자로 전달해서 ForkJoinTask를 만들었습니다.  
+마지막으로 생성한 태스크를 새로운 ForkJoinPool의 invoke 메서드로 전달했습니다.  
+  
+ForkJoinPool에서 실행되는 마지막 invoke 메서드의 반환값은 ForkJoinSumCalculator에서 정의한 태스크의 결과가 됩니다.  
+  
+일반적으로 애플리케이션에서는 둘 이상의 ForkJoinPool을 사용하지 않습니다.  
+즉, 소프트웨어의 필요한 곳에서 언제든 가져다 쓸 수 있도록 ForkJoinPool을 한 번만 인스턴스화해서 **정적 필드에 싱글턴으로 저장합니다.**  
+  
+ForkJoinPool을 만들면서 인수가 없는 디폴트 생성자를 이용했는데, 이는 JVM에서 이용할 수 있는 모든 프로세서가 자유롭게 풀에 접근할 수 있음을 의미합니다.  
+더 정확하게는 Runtime.availableProcessors의 반환값으로 풀에 사용할 스레드 수를 결정합니다.  
+  
+`사용할 수 있는 프로세서`라는 이름과는 달리 실제 프로세서 외에 `하이퍼스레딩과 관련된 가상 프로세서도 개수에 포함합니다.  
+### ForkJoinSumCalculator 실행
 
 
 
