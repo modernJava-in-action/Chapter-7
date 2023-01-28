@@ -200,6 +200,89 @@ SIZED 스트림(크기가 알려진 소스) 는 정확히 같은 크기의 두 �
 - 작업 처리 요청이 폭증해도 작업 큐라는 곳에 작업이 대기하다가 여유가 있는 스레드가 그것을 처리하므로 스레드의 전체 개수는 일정하며 애플리케이션의 성능도 저하되지 않습니다.  
   
 ### 7.2.1 RecursiveTask 활용 
+스레드 풀을 이용하려면 `RecursiveTask<R>`의 서브클래스를 만들어야 합니다.  
+여기서 R은 병렬화된 태스크가 생성하는 결과 형식입니다. 결과가 없을 때는 `RecursiveAction` 형식입니다. (결과가 없더라도 다른 비지역 구조를 바꿀 수 있습니다)  
+`RecursiveTask`를 정의하려면 추상 메서드 compute 를 구현해야 합니다.  
+```java
+protected abstract R compute();
+```
+compute 메서드는 태스크를 서브태스크로 분할하는 로직과  
+더 이상 분할할 수 없을 때 개별 서브태스크의 결과를 생산할 알고리즘을 정의합니다.  
+  
+따라서 대부분의 compute 메서드 구현은 다음과 같은 의사코드 형식을 유지합니다.  
+```java
+if (태스크가 충분히 작거나 더 이상 분할할 수 없으면) {
+	순차적으로 태스크 계산
+} else {
+	태스크를 두 서브태스크로 분할
+	태스크가 다시 서브태스크로 분할되도록 이 메서드를 재귀적으로 호출함
+	모든 서브태스크의 연산이 완료될 때까지 기다림
+	각 서브태스크의 결과를 합침 
+}
+```
+이 알고리즘은 분할 후 정복 알고리즘의 병렬화 버전입니다.  
+분할 정복 알고리즘은 그대로 해결할 수 없는 문제를 작은 문제로 분할하여 문제를 해결하는 방법이나 알고리즘입니다.  
+  
+`ForkJoinSumCalculator`  
+```java
+public class ForkJoinSumCalculator extends RecursiveTask<Long> {
+
+	private static final long THRESHOLD = 10_000; // 이 값 이하의 서브태스크는 더 이상 분할할 수 없다.
+	private final long[] numbers;
+	private final int start; // 이 서브태크스에서 처리할 배열의 초기 위치
+	private final int end; // 이 서브태스크에서 처리할 배열의 최종 위치
+
+	public ForkJoinSumCalculator(long[] numbers) { // 메인 태스크를 생성할 때 사용할 공개 생성자
+		this(numbers, 0, numbers.length);
+	}
+
+	private ForkJoinSumCalculator(long[] numbers, int start, int end) { // 메인 태스크의 서브태스크를 재귀적으로 만들 때 사용할 비공개 생성자
+		this.numbers = numbers;
+		this.start = start;
+		this.end = end;
+	}
+
+	@Override
+	protected Long compute() {
+		int length = end - start;
+		if (length <= THRESHOLD) { // 기준값과 같거나 작으면 순차적으로 결과를 계산한다.
+			return computeSequentially();
+		}
+
+		ForkJoinSumCalculator leftTask = new ForkJoinSumCalculator(numbers, start, start + length / 2);
+		leftTask.fork();
+
+		ForkJoinSumCalculator rightTask = new ForkJoinSumCalculator(numbers, start + length / 2, end);
+
+		Long rightResult = rightTask.compute();
+		Long leftResult = leftTask.join();
+		return leftResult + rightResult;
+	}
+
+	private long computeSequentially() {
+		long sum = 0;
+		for (int i = start; i < end; ++i) {
+			sum += numbers[i];
+		}
+		return sum;
+	}
+
+	public long computeSequentiallyWithStream() {
+		return Arrays.stream(numbers)
+			.sum();
+	}
+}
+```
+위 메서드는 n까지의 자연수 덧셈 작업을 병렬로 수행하는 방법을 더 직관적으로 보여줍니다.  
+다음 코드처럼 ForkJoinSumcalculator의 생성자로 원하는 수의 배열을 넘겨줄 수 있습니다.  
+```java
+public static long forkJoinSum(long n) {
+    long[] numbers = LongStream.rangeClosed(1, n).toArray();
+    ForkJoinTask<Long> task = new ForkJoinSumCalculator(numbers);
+    return FORK_JOIN_POOL.invoke(task);
+  }
+```
+
 
 
   
